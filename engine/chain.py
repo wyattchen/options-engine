@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import math
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -76,7 +76,8 @@ def analyze(chain: pd.DataFrame, S: float, T: float, r: float, q: float) -> pd.D
             sigma, _, method = implied_vol(px, S, c.strike, T, r, is_call, q)
         row = {"type": c.type, "strike": c.strike, "bid": c.bid, "ask": c.ask,
                "price": px, "src": src, "iv": sigma, "iv_status": method,
-               "yahoo_iv": getattr(c, "yahoo_iv", float("nan"))}
+               "yahoo_iv": getattr(c, "yahoo_iv", float("nan")),
+               "last_trade": getattr(c, "last_trade", pd.NaT)}
         if not math.isnan(sigma):
             g = greeks(S, c.strike, T, r, sigma, is_call, q)
             row.update(delta=float(g["delta"]), gamma=float(g["gamma"]),
@@ -84,6 +85,33 @@ def analyze(chain: pd.DataFrame, S: float, T: float, r: float, q: float) -> pd.D
                        theta_day=float(g["theta"]) / 365)     # $ per calendar day
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def fetch_inputs(tk) -> tuple[float, float, float]:
+    """Spot, risk-free rate and dividend yield for a yfinance Ticker."""
+    import yfinance as yf
+
+    spot = float(tk.fast_info["last_price"])
+    # 13-week T-bill yield, quoted in percent. A reasonable short-rate proxy.
+    r = float(yf.Ticker("^IRX").fast_info["last_price"]) / 100
+    # yfinance's `dividendYield` is in percent; the trailing one is a decimal.
+    q = float(tk.info.get("trailingAnnualDividendYield") or 0.0)
+    return spot, r, q
+
+
+def fetch_chain(tk, expiry: str) -> pd.DataFrame:
+    """Calls and puts for one expiry, in this module's column layout."""
+    oc = tk.option_chain(expiry)
+    parts = []
+    for kind, df in (("call", oc.calls), ("put", oc.puts)):
+        parts.append(pd.DataFrame({
+            "type": kind, "strike": df["strike"], "bid": df["bid"].fillna(0),
+            "ask": df["ask"].fillna(0), "last": df["lastPrice"].fillna(0),
+            "last_trade": pd.to_datetime(df["lastTradeDate"], utc=True),
+            "volume": df["volume"].fillna(0), "open_interest": df["openInterest"].fillna(0),
+            "yahoo_iv": df["impliedVolatility"],
+        }))
+    return pd.concat(parts, ignore_index=True)
 
 
 def fetch_snapshot(ticker: str, expiry: str | None = None) -> Snapshot:
@@ -98,24 +126,10 @@ def fetch_snapshot(ticker: str, expiry: str | None = None) -> Snapshot:
     if expiry not in expiries:
         raise SystemExit(f"{expiry} not listed. Available: {', '.join(expiries[:12])} ...")
 
-    spot = float(tk.fast_info["last_price"])
-    # 13-week T-bill yield, quoted in percent. A reasonable short-rate proxy.
-    r = float(yf.Ticker("^IRX").fast_info["last_price"]) / 100
-    # yfinance's `dividendYield` is in percent; the trailing one is a decimal.
-    q = float(tk.info.get("trailingAnnualDividendYield") or 0.0)
-
-    oc = tk.option_chain(expiry)
-    parts = []
-    for kind, df in (("call", oc.calls), ("put", oc.puts)):
-        parts.append(pd.DataFrame({
-            "type": kind, "strike": df["strike"], "bid": df["bid"].fillna(0),
-            "ask": df["ask"].fillna(0), "last": df["lastPrice"].fillna(0),
-            "volume": df["volume"].fillna(0), "open_interest": df["openInterest"].fillna(0),
-            "yahoo_iv": df["impliedVolatility"],
-        }))
+    spot, r, q = fetch_inputs(tk)
     exp = date.fromisoformat(expiry)
     return Snapshot(ticker.upper(), spot, r, q, exp, years_to_expiry(exp, now), now,
-                    pd.concat(parts, ignore_index=True))
+                    fetch_chain(tk, expiry))
 
 
 def format_table(res: pd.DataFrame) -> str:

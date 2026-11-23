@@ -5,7 +5,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]
-data = ["pandas", "yfinance"]
+data = ["pandas", "yfinance", "matplotlib"]
 dev = ["pytest", "pandas"]
 
 [tool.pytest.ini_options]

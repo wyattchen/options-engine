@@ -7,7 +7,7 @@ parallel, and aggregates live portfolio risk.
 ## Status
 
 - [x] **Phase 1** – Black-Scholes-Merton pricing, Greeks, implied-vol solver, correctness tests
-- [ ] **Phase 2** – *(in progress: live options chain via `engine/chain.py`)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
+- [ ] **Phase 2** – *(in progress: live options chain and IV surface done)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
 - [ ] **Phase 3** – fault tolerance, benchmarks (throughput, p50/p99 latency), observability dashboard
 
 ## Phase 1
@@ -41,6 +41,27 @@ bid = ask = 0, so the tool falls back to the last trade and says so. Those IVs
 are approximate, because the last trade can be hours older than the spot price.
 Yahoo's own `impliedVolatility` column is shown for comparison, but it is
 unreliable outside market hours.
+
+## Implied-volatility surface
+
+`engine/surface.py` runs the chain pipeline across every expiry (7–365 days by
+default), keeps clean quotes, and fits a smile curve per expiry.
+
+```bash
+pip install pandas yfinance matplotlib
+python -m engine.surface NVDA          # charts + CSVs written to out/NVDA/
+```
+
+It prints ATM IV, skew and fit error per expiry, and saves `smile.png` (IV vs
+strike for 5 expiries), `term.png` (ATM IV vs time) and `surface.png` (heatmap).
+
+- **OTM only.** Puts below the forward, calls above. Out-of-the-money prices
+  are nearly all time value, so they say the most about volatility.
+- **Cleaning.** Drops quotes under 5 cents, |delta| under 0.03, unsolvable
+  IVs, and last-trade prices more than 60 minutes older than the newest trade.
+- **Fit.** IV = a + b·k + c·k² in log-moneyness k = ln(K/F), weighted by vega.
+  `a` is ATM vol, `b` the skew, `c` the curvature. A quadratic can't follow
+  the far wings when they turn up sharply; an SVI fit is the standard upgrade.
 
 ### Design notes
 
