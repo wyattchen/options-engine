@@ -7,7 +7,7 @@ parallel, and aggregates live portfolio risk.
 ## Status
 
 - [x] **Phase 1** – Black-Scholes-Merton pricing, Greeks, implied-vol solver, correctness tests
-- [ ] **Phase 2** – *(in progress: live options chain and IV surface done)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
+- [ ] **Phase 2** – *(in progress: chain, IV surface, producer, workers and live dashboard done; risk aggregator next)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
 - [ ] **Phase 3** – fault tolerance, benchmarks (throughput, p50/p99 latency), observability dashboard
 
 ## Phase 1
@@ -62,6 +62,39 @@ strike for 5 expiries), `term.png` (ATM IV vs time) and `surface.png` (heatmap).
 - **Fit.** IV = a + b·k + c·k² in log-moneyness k = ln(K/F), weighted by vega.
   `a` is ATM vol, `b` the skew, `c` the curvature. A quadratic can't follow
   the far wings when they turn up sharply; an SVI fit is the standard upgrade.
+
+## Streaming pipeline and live dashboard
+
+```
+producer ──quotes──▶ Redis Stream ──▶ pricing workers (consumer group) ──analytics──▶ dashboard
+ (sim or Yahoo)                         worker-1, worker-2, ...                       localhost:8000
+```
+
+```bash
+brew install redis
+pip install pandas yfinance redis fastapi uvicorn
+python -m engine.launch NVDA            # Redis + 2 workers + dashboard + simulated feed
+python -m engine.launch NVDA --source yahoo --workers 1    # real (delayed) quotes
+```
+
+Open http://localhost:8000. Ctrl+C stops everything (Redis last).
+
+| Module | Role |
+|---|---|
+| `engine/bus.py` | All Redis access: stream names, publish, consumer groups. Swap this file for Kafka. |
+| `engine/producer.py` | Publishes one message per contract quote. `sim` calibrates to the live surface, then random-walks the stock price; `yahoo` polls real quotes. |
+| `engine/worker.py` | Reads quotes via the `pricers` consumer group, solves IV + Greeks, publishes to `analytics`, then acknowledges. Run more to share the load. |
+| `engine/dashboard/` | FastAPI server tails `analytics` and pushes a snapshot each second over Server-Sent Events. Shows spot, ATM IV, throughput, latency (p50/p99), backlog, the smile and the full chain. |
+| `engine/launch.py` | Starts and stops the whole pipeline. |
+
+- **Self-contained messages.** Each quote carries spot, rate and time to expiry, so any
+  worker can price it with no shared state.
+- **Ack after publish.** A worker acknowledges a quote only once its result is in
+  `analytics`, so a crash leaves work pending instead of losing it.
+- **Measured, then fixed.** The first run showed ~1.25 s end-to-end latency. Profiling
+  found 85% of solver time in `scipy.stats.norm.cdf` argument checking; switching to
+  `scipy.special.ndtr` made pricing ~24x faster (3.3 ms → 0.14 ms per quote) and
+  latency fell to ~60–180 ms p50 on a laptop.
 
 ### Design notes
 

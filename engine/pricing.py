@@ -13,7 +13,20 @@ Conventions:
 from __future__ import annotations
 
 import numpy as np
-from scipy.stats import norm
+from scipy.special import ndtr
+
+# Standard normal CDF and PDF. scipy.special.ndtr gives the same values as
+# scipy.stats.norm.cdf without its per-call argument checking, which made up
+# ~85% of the implied-vol solver's run time when pricing one quote at a time.
+_SQRT_2PI = np.sqrt(2.0 * np.pi)
+
+
+def _cdf(x):
+    return ndtr(x)
+
+
+def _pdf(x):
+    return np.exp(-0.5 * np.square(x)) / _SQRT_2PI
 
 
 def _d1_d2(S, K, T, r, q, sigma):
@@ -29,8 +42,8 @@ def price(S, K, T, r, sigma, is_call=True, q=0.0):
     d1, d2 = _d1_d2(S, K, T, r, q, sigma)
     disc_s = S * np.exp(-q * np.asarray(T))
     disc_k = K * np.exp(-r * np.asarray(T))
-    call = disc_s * norm.cdf(d1) - disc_k * norm.cdf(d2)
-    put = disc_k * norm.cdf(-d2) - disc_s * norm.cdf(-d1)
+    call = disc_s * _cdf(d1) - disc_k * _cdf(d2)
+    put = disc_k * _cdf(-d2) - disc_s * _cdf(-d1)
     return np.where(is_call, call, put)
 
 
@@ -43,21 +56,21 @@ def greeks(S, K, T, r, sigma, is_call=True, q=0.0):
     T = np.asarray(T, dtype=float)
     d1, d2 = _d1_d2(S, K, T, r, q, sigma)
     sqrt_t = np.sqrt(T)
-    pdf_d1 = norm.pdf(d1)
+    pdf_d1 = _pdf(d1)
     eq, er = np.exp(-q * T), np.exp(-r * T)
 
     gamma = eq * pdf_d1 / (S * sigma * sqrt_t)
     vega = S * eq * pdf_d1 * sqrt_t
 
-    call_delta = eq * norm.cdf(d1)
+    call_delta = eq * _cdf(d1)
     put_delta = call_delta - eq
 
     common_theta = -S * eq * pdf_d1 * sigma / (2 * sqrt_t)
-    call_theta = common_theta - r * K * er * norm.cdf(d2) + q * S * eq * norm.cdf(d1)
-    put_theta = common_theta + r * K * er * norm.cdf(-d2) - q * S * eq * norm.cdf(-d1)
+    call_theta = common_theta - r * K * er * _cdf(d2) + q * S * eq * _cdf(d1)
+    put_theta = common_theta + r * K * er * _cdf(-d2) - q * S * eq * _cdf(-d1)
 
-    call_rho = K * T * er * norm.cdf(d2)
-    put_rho = -K * T * er * norm.cdf(-d2)
+    call_rho = K * T * er * _cdf(d2)
+    put_rho = -K * T * er * _cdf(-d2)
 
     return {
         "delta": np.where(is_call, call_delta, put_delta),

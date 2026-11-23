@@ -6,7 +6,8 @@ dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]
 data = ["pandas", "yfinance", "matplotlib"]
-dev = ["pytest", "pandas"]
+stream = ["pandas", "yfinance", "redis", "fastapi", "uvicorn"]
+dev = ["pytest", "pandas", "redis"]
 
 [tool.pytest.ini_options]
 # Lets `pytest` find the `engine` package and the tests from the project root.
