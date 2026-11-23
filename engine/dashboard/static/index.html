@@ -79,6 +79,51 @@
   td.itm { background: var(--itm); }
   tr.atm td { background: var(--atm); color: var(--ink); }
   .help { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  /* paper trading */
+  .section { margin-bottom: 16px; }
+  .cardhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .cardhead .spacer { margin-left: auto; }
+  .mini { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 10px 0 12px; }
+  .mini > div { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .mini .k { font-size: 12px; color: var(--muted); }
+  .mini .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .mini .s { font-size: 11px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  button.act { font: inherit; font-size: 13px; border-radius: 6px; padding: 5px 12px; cursor: pointer;
+               border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  button.act:hover:not(:disabled) { border-color: var(--axis); }
+  button.act:disabled { opacity: .45; cursor: not-allowed; }
+  button.buy { background: var(--s1); border-color: var(--s1); color: #fff; }
+  button.sell { background: var(--s2); border-color: var(--s2); color: #fff; }
+  button.danger { color: var(--bad); }
+  button.small { font-size: 12px; padding: 2px 8px; }
+  input.num { font: inherit; width: 140px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--axis);
+              background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; }
+  td.trade { cursor: pointer; }
+  tbody tr:hover td.trade { outline: 1px solid var(--grid); }
+  td.trade:hover { color: var(--ink); }
+  .held { display: inline-block; margin-left: 4px; font-size: 10px; font-weight: 600; color: #fff;
+          background: var(--s1); border-radius: 4px; padding: 0 4px; vertical-align: 1px; }
+  .held.put { background: var(--s2); }
+  td.l, th.l { text-align: left; }
+  .emptyrow td { text-align: center; color: var(--muted); padding: 14px; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--ink2); margin-top: 10px; }
+  .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .msg { font-size: 13px; min-height: 18px; }
+  .msg.err { color: var(--bad); } .msg.ok { color: var(--good); }
+
+  dialog { border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: min(420px, calc(100vw - 32px));
+           background: var(--surface); color: var(--ink); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog h3 { margin: 0 0 2px; font-size: 16px; }
+  .quote { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+  .quote .k { font-size: 11px; color: var(--muted); }
+  .quote .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  .est { font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; line-height: 1.6; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+           background: var(--ink); color: var(--page); padding: 8px 14px; border-radius: 8px; font-size: 13px;
+           box-shadow: 0 4px 16px rgba(0,0,0,.25); }
 </style>
 </head>
 <body>
@@ -107,6 +152,31 @@
     <div class="tile"><div class="k">Backlog</div><div class="v" id="tBack">–</div><div class="s" id="tBackSub"></div></div>
   </div>
 
+  <div class="card section" id="acct">
+    <div class="cardhead">
+      <h2>Paper trading account</h2>
+      <span class="sub" style="margin:0">Simulated money · buys fill at the ask, sells at the bid · <span id="feeNote"></span></span>
+      <span class="spacer"></span>
+      <button class="act small" id="resetOpen">Reset account…</button>
+    </div>
+    <div class="inline-form" id="resetForm" hidden style="margin-top:10px">
+      <label for="resetCash" class="sub" style="margin:0">Starting cash ($)</label>
+      <input class="num" id="resetCash" type="number" min="1" step="1000" value="100000">
+      <button class="act danger" id="resetDo">Reset: close everything, erase history</button>
+      <button class="act" id="resetCancel">Cancel</button>
+    </div>
+    <div class="mini">
+      <div><div class="k">Account value</div><div class="v" id="aValue">–</div><div class="s" id="aValueSub"></div></div>
+      <div><div class="k">Total P&amp;L</div><div class="v" id="aPnl">–</div><div class="s" id="aPnlSub"></div></div>
+      <div><div class="k">Cash</div><div class="v" id="aCash">–</div><div class="s" id="aCashSub"></div></div>
+      <div><div class="k">Delta (share equiv.)</div><div class="v" id="aDelta">–</div><div class="s" id="aDeltaSub"></div></div>
+      <div><div class="k">Theta per day</div><div class="v" id="aTheta">–</div><div class="s">time decay, all positions</div></div>
+      <div><div class="k">Vega per vol point</div><div class="v" id="aVega">–</div><div class="s">if IV rises 1 point</div></div>
+    </div>
+    <div class="tablewrap"><table id="positions"></table></div>
+    <details><summary id="tradesSummary">Trade history</summary><div class="tablewrap"><table id="trades"></table></div></details>
+  </div>
+
   <div class="charts">
     <div class="card">
       <h2 id="spotTitle">Spot price</h2>
@@ -125,9 +195,34 @@
     <h2>Options chain</h2>
     <div class="sub" id="chainSub">Live IV and Greeks from the pricing workers</div>
     <div class="tablewrap"><table id="chain"></table></div>
-    <div class="help">IV = implied volatility. Δ delta ($ per $1 stock move), Γ gamma, Vega ($ per 1 vol point), Θ theta ($ per day). Shaded = in the money; highlighted row = nearest the stock price.</div>
+    <div class="help"><b>Click a call or put to trade it.</b> IV = implied volatility. Δ delta ($ per $1 stock move), Γ gamma, Vega ($ per 1 vol point), Θ theta ($ per day). Shaded = in the money; highlighted row = nearest the stock price.</div>
   </div>
 </div>
+
+<dialog id="ticket">
+  <h3 id="tkTitle"></h3>
+  <div class="sub" id="tkSub"></div>
+  <div class="quote">
+    <div><div class="k">Bid</div><div class="v" id="tkBid"></div></div>
+    <div><div class="k">Ask</div><div class="v" id="tkAsk"></div></div>
+    <div><div class="k">IV</div><div class="v" id="tkIv"></div></div>
+    <div><div class="k">Delta</div><div class="v" id="tkDelta"></div></div>
+  </div>
+  <div class="row">
+    <label for="tkQty">Contracts</label>
+    <input class="num" id="tkQty" type="number" min="1" step="1" value="1" style="width:90px">
+    <span class="sub" style="margin:0" id="tkHeld"></span>
+  </div>
+  <div class="est" id="tkEst"></div>
+  <div class="row">
+    <button class="act buy" id="tkBuy">Buy</button>
+    <button class="act sell" id="tkSell">Sell</button>
+    <span class="spacer" style="margin-left:auto"></span>
+    <button class="act" id="tkClose">Cancel</button>
+  </div>
+  <div class="msg" id="tkMsg"></div>
+</dialog>
+<div class="toast" id="toast" hidden></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -243,17 +338,19 @@ function drawChain() {
   const strikes = [...new Set(rows.map(r => r.strike))].sort((a, b) => a - b);
   const get = (k, t) => rows.find(r => r.strike === k && r.type === t) || {};
   const atm = strikes.reduce((b, k) => Math.abs(k - snap.spot) < Math.abs(b - snap.spot) ? k : b, strikes[0]);
-  const side = (o, itm) => {
-    const c = itm ? ' class="itm"' : "";
+  const held = heldMap();
+  const side = (o, itm, k, t) => {
+    const c = ` class="trade${itm ? " itm" : ""}" data-t="${t}" data-k="${k}" title="Trade the ${k} ${t}"`;
     return [fmt(o.bid), fmt(o.ask), pct(o.iv), fmt(o.delta, 3), fmt(o.gamma, 4), fmt(o.vega_1pct, 3), fmt(o.theta_day, 3)]
       .map(v => `<td${c}>${v}</td>`);
   };
+  const badge = (k, t) => { const n = held[key(selected, t, k)]; return n ? `<span class="held ${t}">${t[0].toUpperCase()}+${n}</span>` : ""; };
   const cols = ["Bid", "Ask", "IV", "Δ", "Γ", "Vega", "Θ"];
   let h = `<thead><tr class="side"><th colspan="7">Calls</th><th></th><th colspan="7">Puts</th></tr><tr>
     ${cols.map(c => `<th>${c}</th>`).join("")}<th style="text-align:center">Strike</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
   for (const k of strikes) {
-    const c = side(get(k, "call"), k < snap.spot), p = side(get(k, "put"), k > snap.spot);
-    h += `<tr${k === atm ? ' class="atm"' : ""}>${c.join("")}<td class="strike">${k}</td>${p.join("")}</tr>`;
+    const c = side(get(k, "call"), k < snap.spot, k, "call"), p = side(get(k, "put"), k > snap.spot, k, "put");
+    h += `<tr${k === atm ? ' class="atm"' : ""}>${c.join("")}<td class="strike">${badge(k, "call")}${k}${badge(k, "put")}</td>${p.join("")}</tr>`;
   }
   $("chain").innerHTML = h + "</tbody>";
 }
@@ -298,8 +395,132 @@ function drawExpiries() {
 
 function render() {
   if (!snap) return;
-  drawExpiries(); drawTiles(); drawSpot(); drawSmile(); drawChain();
+  drawExpiries(); drawTiles(); drawAccount(); drawSpot(); drawSmile(); drawChain(); updateTicket();
 }
+
+// ---------- paper trading
+const money = (x, d = 2) => x == null ? "–" : (x < 0 ? "−$" : "$") + Math.abs(x).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const signed = (x, d = 2) => x == null ? "–" : (x > 0 ? "+" : "") + money(x, d);
+const pnlCls = x => x > 0.005 ? "up" : x < -0.005 ? "down" : "";
+const key = (expiry, type, strike) => `${snap.ticker}|${expiry}|${type}|${+strike}`;
+const heldMap = () => Object.fromEntries((snap?.account?.positions || []).map(p => [p.contract, p.qty]));
+let ticket = null;   // {expiry, type, strike}
+
+function drawAccount() {
+  const a = snap.account; if (!a) return;
+  $("feeNote").textContent = `$${a.fee_per_contract.toFixed(2)} fee per contract`;
+  $("aValue").textContent = money(a.account_value);
+  $("aValueSub").textContent = `started with ${money(a.starting_cash, 0)}`;
+  $("aPnl").innerHTML = `<span class="${pnlCls(a.total_pnl)}">${signed(a.total_pnl)}</span>`;
+  $("aPnlSub").textContent = `${(a.total_pnl_pct * 100).toFixed(2)}% · realized ${signed(a.realized_pnl)} · open ${signed(a.unrealized_pnl)}`;
+  $("aCash").textContent = money(a.cash);
+  $("aCashSub").textContent = `${money(a.market_value)} in options · fees ${money(a.fees_paid)}`;
+  const g = a.greeks;
+  $("aDelta").textContent = (g.delta >= 0 ? "+" : "") + g.delta.toFixed(0);
+  $("aDeltaSub").textContent = a.positions.length ? `like ${g.delta >= 0 ? "owning" : "shorting"} ${Math.abs(g.delta).toFixed(0)} shares` : "no positions";
+  $("aTheta").innerHTML = `<span class="${pnlCls(g.theta)}">${signed(g.theta)}</span>`;
+  $("aVega").innerHTML = `<span class="${pnlCls(g.vega)}">${signed(g.vega)}</span>`;
+
+  const cols = `<tr><th class="l">Contract</th><th>Qty</th><th>Avg cost</th><th>Mark</th><th>Value</th>
+    <th>P&amp;L</th><th>P&amp;L %</th><th>Δ</th><th>Θ / day</th><th>Vega</th><th></th></tr>`;
+  const body = a.positions.length ? a.positions.map(p => `<tr>
+      <td class="l"><a href="#" data-open="${p.expiry}|${p.type}|${p.strike}">${p.label}</a>${p.stale ? ' <span class="sub">(no live quote)</span>' : ""}</td>
+      <td>${p.qty}</td><td>${fmt(p.avg_price)}</td><td>${fmt(p.mark)}</td><td>${money(p.market_value)}</td>
+      <td class="${pnlCls(p.unrealized)}">${signed(p.unrealized)}</td>
+      <td class="${pnlCls(p.unrealized)}">${p.unrealized_pct == null ? "–" : (p.unrealized_pct * 100).toFixed(1) + "%"}</td>
+      <td>${p.delta == null ? "–" : p.delta.toFixed(0)}</td><td>${signed(p.theta)}</td><td>${signed(p.vega)}</td>
+      <td><button class="act small" data-close="${p.expiry}|${p.type}|${p.strike}|${p.qty}" ${p.bid == null ? "disabled" : ""}>Close at bid</button></td></tr>`).join("")
+    : `<tr class="emptyrow"><td colspan="11">No positions yet. Click any call or put in the options chain below to place a trade.</td></tr>`;
+  $("positions").innerHTML = `<thead>${cols}</thead><tbody>${body}</tbody>`;
+
+  $("tradesSummary").textContent = `Trade history (${a.trades.length}${a.trades.length === 50 ? "+" : ""})`;
+  $("trades").innerHTML = `<thead><tr><th class="l">Time</th><th class="l">Side</th><th>Qty</th><th class="l">Contract</th>
+    <th>Price</th><th>Fees</th><th>Realized</th><th>Cash after</th></tr></thead><tbody>${a.trades.map(t => `<tr>
+      <td class="l">${new Date(t.ts).toLocaleTimeString()}</td><td class="l">${t.side.toUpperCase()}</td><td>${t.qty}</td>
+      <td class="l">${t.label}</td><td>${fmt(t.price)}</td><td>${money(t.fees)}</td>
+      <td class="${t.side === "sell" ? pnlCls(t.realized) : ""}">${t.side === "sell" ? signed(t.realized) : "–"}</td>
+      <td>${money(t.cash_after)}</td></tr>`).join("") || `<tr class="emptyrow"><td colspan="8">No trades yet</td></tr>`}</tbody>`;
+}
+
+function openTicket(expiry, type, strike) {
+  ticket = { expiry, type, strike: +strike };
+  $("tkQty").value = 1; $("tkMsg").textContent = ""; $("tkMsg").className = "msg";
+  updateTicket();
+  if (!$("ticket").open) $("ticket").showModal();
+  $("tkQty").focus(); $("tkQty").select();
+}
+
+function updateTicket() {
+  if (!ticket || !$("ticket").open) return;
+  const { expiry, type, strike } = ticket, a = snap.account;
+  const q = snap.rows.find(r => r.expiry === expiry && r.type === type && r.strike === strike) || {};
+  const held = heldMap()[key(expiry, type, strike)] || 0;
+  const qty = Math.max(0, Math.floor(+$("tkQty").value || 0));
+  const fee = a.fee_per_contract * qty;
+  $("tkTitle").textContent = `${snap.ticker} ${expiry} ${strike} ${type}`;
+  $("tkSub").textContent = `${type === "call" ? "Right to buy" : "Right to sell"} 100 shares at $${strike} · stock now ${fmt(snap.spot)}`;
+  $("tkBid").textContent = fmt(q.bid); $("tkAsk").textContent = fmt(q.ask);
+  $("tkIv").textContent = pct(q.iv); $("tkDelta").textContent = fmt(q.delta, 3);
+  $("tkHeld").textContent = held ? `you hold ${held}` : "you hold none";
+  const cost = q.ask * 100 * qty + fee, proceeds = q.bid * 100 * qty - fee;
+  $("tkEst").innerHTML = qty ? `Buy ${qty}: ${fmt(q.ask)} × 100 × ${qty} + ${money(fee)} fees = <b>${money(cost)}</b> (cash ${money(a.cash)})<br>` +
+    (held ? `Sell ${Math.min(qty, held)}: ${fmt(q.bid)} × 100 × ${Math.min(qty, held)} − fees = <b>${money(q.bid * 100 * Math.min(qty, held) - a.fee_per_contract * Math.min(qty, held))}</b>` : "Sell: you need to own this contract first")
+    : "Enter how many contracts";
+  $("tkBuy").textContent = `Buy ${qty || ""} at ${fmt(q.ask)}`;
+  $("tkSell").textContent = `Sell ${qty || ""} at ${fmt(q.bid)}`;
+  $("tkBuy").disabled = !qty || !q.ask || cost > a.cash;
+  $("tkSell").disabled = !qty || !held || qty > held || q.bid == null;
+}
+
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "Request failed");
+  return j;
+}
+
+function toast(text) {
+  const t = $("toast"); t.textContent = text; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 3500);
+}
+
+async function sendOrder(side, expiry, type, strike, qty) {
+  const j = await post("/api/order", { side, expiry, type, strike: +strike, qty: +qty });
+  snap.account = j.account; render();
+  const t = j.trade;
+  toast(`${side === "buy" ? "Bought" : "Sold"} ${t.qty} ${t.label} at ${fmt(t.price)}` +
+        (side === "sell" ? ` · realized ${signed(t.realized)}` : ""));
+}
+
+async function ticketOrder(side) {
+  const { expiry, type, strike } = ticket;
+  try { await sendOrder(side, expiry, type, strike, $("tkQty").value); $("ticket").close(); }
+  catch (e) { $("tkMsg").textContent = e.message; $("tkMsg").className = "msg err"; }
+}
+
+$("tkBuy").onclick = () => ticketOrder("buy");
+$("tkSell").onclick = () => ticketOrder("sell");
+$("tkClose").onclick = () => $("ticket").close();
+$("tkQty").oninput = updateTicket;
+$("ticket").addEventListener("close", () => ticket = null);
+$("chain").addEventListener("click", e => {
+  const td = e.target.closest("td.trade"); if (td) openTicket(selected, td.dataset.t, td.dataset.k);
+});
+$("positions").addEventListener("click", async e => {
+  const open = e.target.closest("[data-open]"), close = e.target.closest("[data-close]");
+  if (open) { e.preventDefault(); const [x, t, k] = open.dataset.open.split("|"); openTicket(x, t, k); }
+  if (close) {
+    const [x, t, k, n] = close.dataset.close.split("|");
+    close.disabled = true;
+    try { await sendOrder("sell", x, t, k, n); } catch (err) { toast(err.message); close.disabled = false; }
+  }
+});
+$("resetOpen").onclick = () => { $("resetForm").hidden = false; $("resetCash").value = Math.round(snap?.account?.starting_cash || 100000); };
+$("resetCancel").onclick = () => $("resetForm").hidden = true;
+$("resetDo").onclick = async () => {
+  try { const j = await post("/api/reset", { cash: +$("resetCash").value }); snap.account = j.account; $("resetForm").hidden = true; render(); toast(`Account reset to ${money(j.account.starting_cash, 0)}`); }
+  catch (e) { toast(e.message); }
+};
 
 function setStatus() {
   const age = (Date.now() - lastMsg) / 1000, stale = snap && snap.metrics.msgs_per_s === 0;

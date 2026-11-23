@@ -7,7 +7,7 @@ parallel, and aggregates live portfolio risk.
 ## Status
 
 - [x] **Phase 1** – Black-Scholes-Merton pricing, Greeks, implied-vol solver, correctness tests
-- [ ] **Phase 2** – *(in progress: chain, IV surface, producer, workers and live dashboard done; risk aggregator next)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
+- [ ] **Phase 2** – *(in progress: chain, IV surface, producer, workers and live dashboard and paper-trading account with portfolio Greeks done)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
 - [ ] **Phase 3** – fault tolerance, benchmarks (throughput, p50/p99 latency), observability dashboard
 
 ## Phase 1
@@ -85,6 +85,7 @@ Open http://localhost:8000. Ctrl+C stops everything (Redis last).
 | `engine/producer.py` | Publishes one message per contract quote. `sim` calibrates to the live surface, then random-walks the stock price; `yahoo` polls real quotes. |
 | `engine/worker.py` | Reads quotes via the `pricers` consumer group, solves IV + Greeks, publishes to `analytics`, then acknowledges. Run more to share the load. |
 | `engine/dashboard/` | FastAPI server tails `analytics` and pushes a snapshot each second over Server-Sent Events. Shows spot, ATM IV, throughput, latency (p50/p99), backlog, the smile and the full chain. |
+| `engine/portfolio.py` | Paper-trading account: fills, fees, P&L and position-level Greeks. Pure logic, no Redis. |
 | `engine/launch.py` | Starts and stops the whole pipeline. |
 
 - **Self-contained messages.** Each quote carries spot, rate and time to expiry, so any
@@ -95,6 +96,7 @@ Open http://localhost:8000. Ctrl+C stops everything (Redis last).
   found 85% of solver time in `scipy.stats.norm.cdf` argument checking; switching to
   `scipy.special.ndtr` made pricing ~24x faster (3.3 ms → 0.14 ms per quote) and
   latency fell to ~60–180 ms p50 on a laptop.
+
 
 ### Design notes
 
@@ -112,3 +114,18 @@ Open http://localhost:8000. Ctrl+C stops everything (Redis last).
 - **Known model limits.** Black-Scholes assumes constant volatility and no
   jumps. Real markets show a volatility skew, which is why Phase 2 builds an
   implied-vol surface rather than assuming one sigma.
+
+## Paper trading
+
+Click a bid or ask in the dashboard's chain to open an order ticket. The account
+starts with $100,000 (you can reset it to any amount) and is saved to
+`data/account.json` after every trade, so it survives restarts.
+
+- **Realistic fills.** Buys fill at the ask and sells at the bid, so you pay the
+  spread, plus $0.65 per contract. One contract covers 100 shares.
+- **Server-side prices.** Orders fill at the latest quote the server has seen, never
+  a price sent by the browser. Quotes older than 15 s are refused.
+- **Long only.** You can sell what you own, but not write options (that needs margin).
+- **Portfolio risk.** Positions are marked at the bid/ask midpoint. Greeks are summed
+  across the book: delta in share-equivalents (+250 = moves like 250 shares),
+  vega and theta in dollars.
