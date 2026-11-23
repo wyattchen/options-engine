@@ -1,0 +1,13 @@
+[project]
+name = "options-engine"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+# Lets `pytest` find the `engine` package and the tests from the project root.
+pythonpath = ["."]
+testpaths = ["tests"]
