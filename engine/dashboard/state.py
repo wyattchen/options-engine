@@ -18,6 +18,7 @@ class State:
         self.spot_hist: deque = deque(maxlen=SPOT_HISTORY)
         self.recent: deque = deque()                 # (arrived_ms, e2e_ms, compute_ms)
         self.ticker = self.feed = None
+        self.tickers: set[str] = set()               # every ticker seen on the stream
         self.spot = self.spot_open = None
         self.workers: dict[str, float] = {}          # worker -> last seen ms
         self.total = 0
@@ -28,6 +29,8 @@ class State:
         self.rows[key] = msg
         self.total += 1
         self.ticker, self.feed = msg.get("ticker"), msg.get("feed")
+        if self.ticker:
+            self.tickers.add(self.ticker)
         spot = msg["spot"]
         if self.spot_open is None:
             self.spot_open = spot
@@ -73,7 +76,7 @@ class State:
         keep = ("expiry", "type", "strike", "bid", "ask", "price", "iv",
                 "delta", "gamma", "vega_1pct", "theta_day", "T")
         return {
-            "ticker": self.ticker, "feed": self.feed,
+            "ticker": self.ticker, "tickers": sorted(self.tickers), "feed": self.feed,
             "spot": self.spot, "spot_open": self.spot_open,
             "spot_hist": list(self.spot_hist),
             "expiries": sorted({k[0] for k in self.rows}),

@@ -25,7 +25,7 @@
   body { margin: 0; background: var(--page); color: var(--ink);
          font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
-  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
   h1 { font-size: 20px; margin: 0; font-weight: 600; }
   .badge { font-size: 12px; color: var(--ink2); border: 1px solid var(--border);
            border-radius: 999px; padding: 2px 10px; }
@@ -34,6 +34,11 @@
   .dot.live { background: var(--good); }
   .dot.down { background: var(--bad); }
 
+  .tickers { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .tickers .label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+  .chip { font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface);
+          border: 1px solid var(--s1); box-shadow: inset 0 0 0 1px var(--s1);
+          border-radius: 6px; padding: 3px 10px; }
   .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
   .filters .label { font-size: 12px; color: var(--muted); margin-right: 4px; }
   .seg { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -79,10 +84,15 @@
 <body>
 <div class="wrap">
   <header>
-    <h1 id="title">Options Engine</h1>
+    <h1>Options Engine</h1>
     <span class="badge" id="feed">waiting for data</span>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
   </header>
+
+  <div class="tickers">
+    <span class="label">Tickers</span>
+    <div id="tickers"><span class="chip" style="opacity:.5">–</span></div>
+  </div>
 
   <div class="filters">
     <span class="label">Expiry</span>
@@ -251,7 +261,12 @@ function drawChain() {
 // ---------- tiles, header, expiry buttons
 function drawTiles() {
   const m = snap.metrics;
-  $("title").textContent = `${snap.ticker || ""} Options Engine`.trim();
+  const tk = snap.tickers || [];
+  if ($("tickers").dataset.list !== tk.join()) {
+    $("tickers").dataset.list = tk.join();
+    $("tickers").innerHTML = tk.length ? tk.map(t => `<span class="chip">${t}</span>`).join(" ")
+                                       : `<span class="chip" style="opacity:.5">–</span>`;
+  }
   $("feed").textContent = snap.feed === "sim" ? "simulated feed" : snap.feed === "yahoo" ? "Yahoo feed (delayed)" : "waiting for data";
   $("tSpot").textContent = fmt(snap.spot);
   if (snap.spot != null && snap.spot_open) {
