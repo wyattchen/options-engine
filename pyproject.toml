@@ -5,7 +5,8 @@ requires-python = ">=3.10"
 dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+data = ["pandas", "yfinance"]
+dev = ["pytest", "pandas"]
 
 [tool.pytest.ini_options]
 # Lets `pytest` find the `engine` package and the tests from the project root.

@@ -7,7 +7,7 @@ parallel, and aggregates live portfolio risk.
 ## Status
 
 - [x] **Phase 1** – Black-Scholes-Merton pricing, Greeks, implied-vol solver, correctness tests
-- [ ] **Phase 2** – streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
+- [ ] **Phase 2** – *(in progress: live options chain via `engine/chain.py`)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
 - [ ] **Phase 3** – fault tolerance, benchmarks (throughput, p50/p99 latency), observability dashboard
 
 ## Phase 1
@@ -22,6 +22,25 @@ parallel, and aggregates live portfolio risk.
 pip install numpy scipy pytest
 pytest -q
 ```
+
+## Live options chain
+
+`engine/chain.py` pulls a real chain from Yahoo Finance (free, ~15 min delayed)
+and fills in every model input automatically: spot, strikes, expiry (to 4pm New
+York time), risk-free rate (13-week T-bill, `^IRX`) and dividend yield. It then
+solves IV and Greeks for each contract.
+
+```bash
+pip install pandas yfinance
+python -m engine.chain NVDA                          # first expiry >= 7 days out
+python -m engine.chain NVDA --expiry 2026-12-18 --width 0.1
+```
+
+Prices use the bid/ask midpoint. When the market is closed Yahoo reports
+bid = ask = 0, so the tool falls back to the last trade and says so. Those IVs
+are approximate, because the last trade can be hours older than the spot price.
+Yahoo's own `impliedVolatility` column is shown for comparison, but it is
+unreliable outside market hours.
 
 ### Design notes
 
