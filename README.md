@@ -7,7 +7,7 @@ parallel, and aggregates live portfolio risk.
 ## Status
 
 - [x] **Phase 1** – Black-Scholes-Merton pricing, Greeks, implied-vol solver, correctness tests
-- [ ] **Phase 2** – streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
+- [ ] **Phase 2** – *(in progress: chain, IV surface, producer, workers and live dashboard and paper-trading account with portfolio Greeks done)* streaming feed (Redis Streams/Kafka), partitioned pricing workers, risk aggregator
 - [ ] **Phase 3** – fault tolerance, benchmarks (throughput, p50/p99 latency), observability dashboard
 
 ## Phase 1
@@ -22,6 +22,81 @@ parallel, and aggregates live portfolio risk.
 pip install numpy scipy pytest
 pytest -q
 ```
+
+## Live options chain
+
+`engine/chain.py` pulls a real chain from Yahoo Finance (free, ~15 min delayed)
+and fills in every model input automatically: spot, strikes, expiry (to 4pm New
+York time), risk-free rate (13-week T-bill, `^IRX`) and dividend yield. It then
+solves IV and Greeks for each contract.
+
+```bash
+pip install pandas yfinance
+python -m engine.chain NVDA                          # first expiry >= 7 days out
+python -m engine.chain NVDA --expiry 2026-12-18 --width 0.1
+```
+
+Prices use the bid/ask midpoint. When the market is closed Yahoo reports
+bid = ask = 0, so the tool falls back to the last trade and says so. Those IVs
+are approximate, because the last trade can be hours older than the spot price.
+Yahoo's own `impliedVolatility` column is shown for comparison, but it is
+unreliable outside market hours.
+
+## Implied-volatility surface
+
+`engine/surface.py` runs the chain pipeline across every expiry (7–365 days by
+default), keeps clean quotes, and fits a smile curve per expiry.
+
+```bash
+pip install pandas yfinance matplotlib
+python -m engine.surface NVDA          # charts + CSVs written to out/NVDA/
+```
+
+It prints ATM IV, skew and fit error per expiry, and saves `smile.png` (IV vs
+strike for 5 expiries), `term.png` (ATM IV vs time) and `surface.png` (heatmap).
+
+- **OTM only.** Puts below the forward, calls above. Out-of-the-money prices
+  are nearly all time value, so they say the most about volatility.
+- **Cleaning.** Drops quotes under 5 cents, |delta| under 0.03, unsolvable
+  IVs, and last-trade prices more than 60 minutes older than the newest trade.
+- **Fit.** IV = a + b·k + c·k² in log-moneyness k = ln(K/F), weighted by vega.
+  `a` is ATM vol, `b` the skew, `c` the curvature. A quadratic can't follow
+  the far wings when they turn up sharply; an SVI fit is the standard upgrade.
+
+## Streaming pipeline and live dashboard
+
+```
+producer ──quotes──▶ Redis Stream ──▶ pricing workers (consumer group) ──analytics──▶ dashboard
+ (sim or Yahoo)                         worker-1, worker-2, ...                       localhost:8000
+```
+
+```bash
+brew install redis
+pip install pandas yfinance redis fastapi uvicorn
+python -m engine.launch NVDA            # Redis + 2 workers + dashboard + simulated feed
+python -m engine.launch NVDA --source yahoo --workers 1    # real (delayed) quotes
+```
+
+Open http://localhost:8000. Ctrl+C stops everything (Redis last).
+
+| Module | Role |
+|---|---|
+| `engine/bus.py` | All Redis access: stream names, publish, consumer groups. Swap this file for Kafka. |
+| `engine/producer.py` | Publishes one message per contract quote. `sim` calibrates to the live surface, then random-walks the stock price; `yahoo` polls real quotes. |
+| `engine/worker.py` | Reads quotes via the `pricers` consumer group, solves IV + Greeks, publishes to `analytics`, then acknowledges. Run more to share the load. |
+| `engine/dashboard/` | FastAPI server tails `analytics` and pushes a snapshot each second over Server-Sent Events. Shows spot, ATM IV, throughput, latency (p50/p99), backlog, the smile and the full chain. |
+| `engine/portfolio.py` | Paper-trading account: fills, fees, P&L and position-level Greeks. Pure logic, no Redis. |
+| `engine/launch.py` | Starts and stops the whole pipeline. |
+
+- **Self-contained messages.** Each quote carries spot, rate and time to expiry, so any
+  worker can price it with no shared state.
+- **Ack after publish.** A worker acknowledges a quote only once its result is in
+  `analytics`, so a crash leaves work pending instead of losing it.
+- **Measured, then fixed.** The first run showed ~1.25 s end-to-end latency. Profiling
+  found 85% of solver time in `scipy.stats.norm.cdf` argument checking; switching to
+  `scipy.special.ndtr` made pricing ~24x faster (3.3 ms → 0.14 ms per quote) and
+  latency fell to ~60–180 ms p50 on a laptop.
+
 
 ### Design notes
 
@@ -39,3 +114,18 @@ pytest -q
 - **Known model limits.** Black-Scholes assumes constant volatility and no
   jumps. Real markets show a volatility skew, which is why Phase 2 builds an
   implied-vol surface rather than assuming one sigma.
+
+## Paper trading
+
+Click a bid or ask in the dashboard's chain to open an order ticket. The account
+starts with $100,000 (you can reset it to any amount) and is saved to
+`data/account.json` after every trade, so it survives restarts.
+
+- **Realistic fills.** Buys fill at the ask and sells at the bid, so you pay the
+  spread, plus $0.65 per contract. One contract covers 100 shares.
+- **Server-side prices.** Orders fill at the latest quote the server has seen, never
+  a price sent by the browser. Quotes older than 15 s are refused.
+- **Long only.** You can sell what you own, but not write options (that needs margin).
+- **Portfolio risk.** Positions are marked at the bid/ask midpoint. Greeks are summed
+  across the book: delta in share-equivalents (+250 = moves like 250 shares),
+  vega and theta in dollars.
